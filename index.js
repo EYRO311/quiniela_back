@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { PORT } from './config.js'
+
 import authRoutes from './routes/auth.routes.js'
 import userRoutes from './routes/user.routes.js'
 import quinielaRoutes from './routes/quiniela.routes.js'
@@ -26,6 +26,8 @@ const corsOptions = {
   ],
   credentials: true
 }
+
+const PORT = process.env.PORT || 3000
 
 const app = express()
 app.use(cors(corsOptions))
