@@ -8,8 +8,27 @@ import quinielaRoutes from './routes/quiniela.routes.js'
 import partidosRoutes from './routes/partidos.routes.js'
 import pronosticosRoutes from './routes/pronosticos.routes.js'
 
+const corsOptions = {
+  origin: [
+    'https://quiniela-front-ten.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-api-key',
+    'cache-control',
+    'pragma',
+    'Expires',
+    'x-amz-tagging'
+  ],
+  credentials: true
+}
+
 const app = express()
-app.use(cors())
+app.use(cors(corsOptions))
 app.use(express.json())
 
 app.get('/', (req, res) => res.send('Quiniela API'))
