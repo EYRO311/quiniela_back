@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt'
-import { saltRounds } from '../config.js'
 import { supabase } from '../db/supabase.js'
 
+const saltRounds = 10
 export class UserRepository {
   static async create ({ username, password, nombre }) {
     validateCredentials(username, password)
