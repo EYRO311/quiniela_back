@@ -1,7 +1,12 @@
 import bcrypt from 'bcrypt'
+import { randomBytes } from 'crypto'
 import { supabase } from '../db/supabase.js'
 
 const saltRounds = 10
+
+// Almacén temporal de tokens (se limpia al reiniciar el servidor)
+const resetTokens = new Map()
+
 export class UserRepository {
   static async create ({ username, password, nombre, correo }) {
     validateCredentials(username, password)
@@ -68,17 +73,41 @@ export class UserRepository {
     if (!user) return null
 
     if (user.auth_user_id) {
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001'
-      const { data, error } = await supabase.auth.admin.generateLink({
-        type: 'recovery',
-        email: correo.trim(),
-        options: { redirectTo: `${frontendUrl}/update-password` }
+      const token = randomBytes(32).toString('hex')
+      resetTokens.set(token, {
+        authUserId: user.auth_user_id,
+        expires: Date.now() + 60 * 60 * 1000
       })
-      if (error) throw new Error(error.message)
-      return { method: 'supabase', resetUrl: data.properties.action_link }
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001'
+      return { method: 'custom', token, resetUrl: `${frontendUrl}/update-password?token=${token}` }
     }
 
     return null
+  }
+
+  static async resetPassword (token, newPassword) {
+    if (!token) throw new Error('Token inválido')
+    if (!newPassword || newPassword.length < 6) throw new Error('La contraseña debe tener mínimo 6 caracteres')
+
+    const entry = resetTokens.get(token)
+    if (!entry) throw new Error('El enlace no es válido o ya fue usado')
+    if (entry.expires < Date.now()) {
+      resetTokens.delete(token)
+      throw new Error('El enlace ha expirado. Solicita uno nuevo')
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, Number(saltRounds))
+
+    await supabase.auth.admin.updateUserById(entry.authUserId, { password: newPassword })
+
+    const { error } = await supabase
+      .schema('quiniela')
+      .from('usuarios')
+      .update({ password_hash: hashedPassword })
+      .eq('auth_user_id', entry.authUserId)
+
+    if (error) throw new Error(error.message)
+    resetTokens.delete(token)
   }
 
   // Sincroniza password_hash en quiniela.usuarios después de un reset via Supabase Auth

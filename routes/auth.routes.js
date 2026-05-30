@@ -37,6 +37,16 @@ router.post('/forgot-password', async (req, res) => {
   }
 })
 
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body
+    await UserRepository.resetPassword(token, password)
+    res.json({ message: 'Contraseña actualizada correctamente.' })
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
+})
+
 router.post('/logout', (req, res) => {
   res.json({ message: 'Sesión cerrada' })
 })
