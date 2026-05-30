@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { UserRepository } from '../repositories/user.repository.js'
+import { sendResetPasswordEmail } from '../services/email.service.js'
 
 const router = Router()
 
@@ -27,10 +28,11 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const { correo } = req.body
     const result = await UserRepository.forgotPassword(correo)
-    console.log('[forgot-password]', correo, result)
+    if (result?.resetUrl) {
+      await sendResetPasswordEmail(correo, result.resetUrl)
+    }
     res.json({ message: 'Si el correo existe, recibirás un enlace para restablecer tu contraseña.' })
   } catch (error) {
-    console.error('[forgot-password] error:', error.message)
     res.status(400).json({ error: error.message })
   }
 })

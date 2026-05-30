@@ -67,17 +67,17 @@ export class UserRepository {
 
     if (!user) return null
 
-    // Si el usuario tiene cuenta en Supabase Auth, usar su flujo de recuperación
     if (user.auth_user_id) {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001'
-      const { error } = await supabase.auth.resetPasswordForEmail(correo.trim(), {
-        redirectTo: `${frontendUrl}/update-password`
+      const { data, error } = await supabase.auth.admin.generateLink({
+        type: 'recovery',
+        email: correo.trim(),
+        options: { redirectTo: `${frontendUrl}/update-password` }
       })
       if (error) throw new Error(error.message)
-      return { method: 'supabase' }
+      return { method: 'supabase', resetUrl: data.properties.action_link }
     }
 
-    // Usuario sin cuenta en Supabase Auth — necesita ser migrado primero
     return null
   }
 
