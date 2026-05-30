@@ -1,4 +1,9 @@
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
+const SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/123'
+
+// Cache de logos — se renueva cada 24h para no saturar TheSportsDB
+let _logosCache = null
+let _logosCacheTime = 0
 
 async function fetchJSON (url) {
   const res = await fetch(url, { headers: { Accept: 'application/json' } })
@@ -74,6 +79,18 @@ export async function fetchCalendar (year = 2026) {
       estado
     }
   })
+}
+
+export async function fetchTeamLogos () {
+  if (_logosCache && Date.now() - _logosCacheTime < 86400000) return _logosCache
+  try {
+    const data = await fetchJSON(`${SPORTSDB}/search_all_teams.php?l=Formula%201`)
+    _logosCache = data?.teams ?? []
+    _logosCacheTime = Date.now()
+  } catch {
+    _logosCache = []
+  }
+  return _logosCache
 }
 
 export async function fetchLastResults (year = 2026) {

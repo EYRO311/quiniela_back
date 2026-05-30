@@ -3,8 +3,23 @@ import {
   fetchDriverStandings,
   fetchConstructorStandings,
   fetchCalendar,
-  fetchLastResults
+  fetchLastResults,
+  fetchTeamLogos
 } from './f1.api.service.js'
+
+function findLogo (nombreEquipo, teams) {
+  if (!teams?.length || !nombreEquipo) return null
+  const n = nombreEquipo.toLowerCase()
+  const match = teams.find(t => {
+    const tn = t.strTeam.toLowerCase()
+    return (
+      tn.includes(n) ||
+      n.includes(tn.split(' ')[0]) ||
+      tn.split(' ').some(w => w.length > 3 && n.includes(w))
+    )
+  })
+  return match?.strBadge ?? null
+}
 
 function matchColor (nombre, escuderiasDB) {
   if (!escuderiasDB?.length) return null
@@ -177,39 +192,36 @@ export async function getUltimoResultado () {
 }
 
 export async function getPilotos () {
-  const { data, error } = await supabase
-    .schema('quiniela')
-    .from('f1_pilotos')
-    .select(`
-      id_piloto,
-      nombre,
-      numero,
-      pais,
-      activo,
-      f1_piloto_escuderia(
-        rol,
-        temporada,
-        activo,
+  const [{ data, error }, teams] = await Promise.all([
+    supabase.schema('quiniela').from('f1_pilotos').select(`
+      id_piloto, nombre, numero, pais, activo,
+      f1_piloto_escuderia(rol, temporada, activo,
         f1_escuderias(id_escuderia, nombre, color, pais)
       )
-    `)
-    .eq('activo', 1)
-    .order('nombre')
+    `).eq('activo', 1).order('nombre'),
+    fetchTeamLogos()
+  ])
 
   if (error) throw new Error(error.message)
-  return data || []
+  return (data || []).map(p => ({
+    ...p,
+    f1_piloto_escuderia: p.f1_piloto_escuderia?.map(pe => ({
+      ...pe,
+      f1_escuderias: pe.f1_escuderias
+        ? { ...pe.f1_escuderias, logo: findLogo(pe.f1_escuderias.nombre, teams) }
+        : null
+    }))
+  }))
 }
 
 export async function getEscuderias () {
-  const { data, error } = await supabase
-    .schema('quiniela')
-    .from('f1_escuderias')
-    .select('*')
-    .eq('activo', 1)
-    .order('nombre')
+  const [{ data, error }, teams] = await Promise.all([
+    supabase.schema('quiniela').from('f1_escuderias').select('*').eq('activo', 1).order('nombre'),
+    fetchTeamLogos()
+  ])
 
   if (error) throw new Error(error.message)
-  return data || []
+  return (data || []).map(e => ({ ...e, logo: findLogo(e.nombre, teams) }))
 }
 
 export async function getCarreras () {
