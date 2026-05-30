@@ -7,11 +7,13 @@ import userRoutes from './routes/user.routes.js'
 import quinielaRoutes from './routes/quiniela.routes.js'
 import partidosRoutes from './routes/partidos.routes.js'
 import pronosticosRoutes from './routes/pronosticos.routes.js'
+import f1Routes from './routes/f1.routes.js'
 
 const corsOptions = {
   origin: [
     'https://quiniela-front-ten.vercel.app',
     'http://localhost:3000',
+    'http://localhost:3001',
     'http://localhost:5173'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
@@ -40,5 +42,6 @@ app.use('/usuarios', userRoutes)
 app.use('/quinielas', quinielaRoutes)
 app.use('/partidos', partidosRoutes)
 app.use('/pronosticos', pronosticosRoutes)
+app.use('/f1', f1Routes)
 
 app.listen(PORT, () => console.log(`Servidor escuchando en puerto ${PORT}`))

@@ -15,16 +15,40 @@ router.post('/login', async (req, res) => {
 
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, nombre } = req.body
-    const id = await UserRepository.create({ username, password, nombre })
+    const { username, password, nombre, correo } = req.body
+    const id = await UserRepository.create({ username, password, nombre, correo })
     res.status(201).json({ id })
   } catch (error) {
     res.status(400).json({ error: error.message })
   }
 })
 
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { correo } = req.body
+    const result = await UserRepository.forgotPassword(correo)
+    console.log('[forgot-password]', correo, result)
+    res.json({ message: 'Si el correo existe, recibirás un enlace para restablecer tu contraseña.' })
+  } catch (error) {
+    console.error('[forgot-password] error:', error.message)
+    res.status(400).json({ error: error.message })
+  }
+})
+
 router.post('/logout', (req, res) => {
   res.json({ message: 'Sesión cerrada' })
+})
+
+// Sincroniza password_hash en quiniela.usuarios después de reset vía Supabase Auth
+router.post('/sync-password', async (req, res) => {
+  try {
+    const { access_token, password } = req.body
+    if (!access_token) return res.status(400).json({ error: 'Token de sesión requerido' })
+    await UserRepository.syncPasswordHash(access_token, password)
+    res.json({ message: 'Contraseña sincronizada correctamente' })
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
 })
 
 export default router

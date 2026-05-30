@@ -3,7 +3,7 @@ import { supabase } from '../db/supabase.js'
 
 const saltRounds = 10
 export class UserRepository {
-  static async create ({ username, password, nombre }) {
+  static async create ({ username, password, nombre, correo }) {
     validateCredentials(username, password)
 
     const { data: existing } = await supabase
@@ -15,17 +15,88 @@ export class UserRepository {
 
     if (existing) throw new Error('El usuario ya existe')
 
+    if (correo) {
+      const { data: emailTaken } = await supabase
+        .schema('quiniela')
+        .from('usuarios')
+        .select('id_random')
+        .eq('correo', correo.trim())
+        .maybeSingle()
+      if (emailTaken) throw new Error('Ese correo ya está en uso')
+    }
+
     const hashedPassword = await bcrypt.hash(password, Number(saltRounds))
+
+    let authUserId = null
+    if (correo) {
+      const { data: authData } = await supabase.auth.admin.createUser({
+        email: correo.trim(),
+        password,
+        email_confirm: true,
+        user_metadata: { username }
+      })
+      if (authData?.user) authUserId = authData.user.id
+    }
 
     const { data, error } = await supabase
       .schema('quiniela')
       .from('usuarios')
-      .insert({ username, password_hash: hashedPassword, nombre: nombre?.trim() || null })
+      .insert({
+        username,
+        password_hash: hashedPassword,
+        nombre: nombre?.trim() || null,
+        correo: correo?.trim() || null,
+        auth_user_id: authUserId
+      })
       .select('id_random')
       .single()
 
     if (error) throw new Error(error.message)
     return data.id_random
+  }
+
+  static async forgotPassword (correo) {
+    if (!correo || !correo.includes('@')) throw new Error('Correo inválido')
+
+    const { data: user } = await supabase
+      .schema('quiniela')
+      .from('usuarios')
+      .select('id_random, correo, auth_user_id')
+      .eq('correo', correo.trim())
+      .maybeSingle()
+
+    if (!user) return null
+
+    // Si el usuario tiene cuenta en Supabase Auth, usar su flujo de recuperación
+    if (user.auth_user_id) {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001'
+      const { error } = await supabase.auth.resetPasswordForEmail(correo.trim(), {
+        redirectTo: `${frontendUrl}/update-password`
+      })
+      if (error) throw new Error(error.message)
+      return { method: 'supabase' }
+    }
+
+    // Usuario sin cuenta en Supabase Auth — necesita ser migrado primero
+    return null
+  }
+
+  // Sincroniza password_hash en quiniela.usuarios después de un reset via Supabase Auth
+  static async syncPasswordHash (accessToken, newPassword) {
+    if (!newPassword || newPassword.length < 6) throw new Error('La contraseña debe tener mínimo 6 caracteres')
+
+    const { data: { user }, error } = await supabase.auth.getUser(accessToken)
+    if (error || !user) throw new Error('Sesión inválida o expirada')
+
+    const hashedPassword = await bcrypt.hash(newPassword, Number(saltRounds))
+
+    const { error: updateError } = await supabase
+      .schema('quiniela')
+      .from('usuarios')
+      .update({ password_hash: hashedPassword })
+      .eq('auth_user_id', user.id)
+
+    if (updateError) throw new Error(updateError.message)
   }
 
   static async login ({ identifier, password }) {
