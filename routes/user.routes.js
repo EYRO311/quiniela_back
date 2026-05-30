@@ -15,8 +15,8 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   try {
-    const { nombre, correo, username } = req.body
-    const user = await UserRepository.update({ id: req.params.id, nombre, correo, username })
+    const { nombre, correo, username, telefono, futbol_f1: futbolF1 } = req.body
+    const user = await UserRepository.update({ id: req.params.id, nombre, correo, username, telefono, futbolF1 })
     res.json({ user })
   } catch (error) {
     res.status(400).json({ error: error.message })

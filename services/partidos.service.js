@@ -11,3 +11,17 @@ export async function getPartidos () {
   if (error) throw new Error(error.message)
   return data || []
 }
+
+export async function getProximoPartido () {
+  const { data, error } = await supabase
+    .schema('quiniela')
+    .from('vw_partidos_detalle')
+    .select('*')
+    .gte('fecha', new Date().toISOString())
+    .order('fecha', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  return data
+}

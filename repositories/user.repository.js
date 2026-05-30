@@ -154,7 +154,7 @@ export class UserRepository {
     return userWithoutPassword
   }
 
-  static async update ({ id, nombre, correo, username }) {
+  static async update ({ id, nombre, correo, username, telefono, futbolF1 }) {
     const updates = {}
 
     if (username !== undefined) {
@@ -192,6 +192,15 @@ export class UserRepository {
       updates.nombre = nombre?.trim() || null
     }
 
+    if (telefono !== undefined) {
+      updates.telefono = telefono?.trim() || null
+    }
+
+    if (futbolF1 !== undefined) {
+      if (!['futbol', 'f1', 'ambos'].includes(futbolF1)) throw new Error('Valor de futbol_f1 inválido')
+      updates.futbol_f1 = futbolF1
+    }
+
     if (Object.keys(updates).length === 0) throw new Error('Sin cambios para guardar')
 
     updates.updated_at = new Date().toISOString()
@@ -201,7 +210,7 @@ export class UserRepository {
       .from('usuarios')
       .update(updates)
       .eq('id_random', id)
-      .select('id_random, username, nombre, correo, puntos_totales')
+      .select('id_random, username, nombre, correo, puntos_totales, telefono, tipo_user, created_at, futbol_f1')
       .single()
 
     if (error) throw new Error(error.message)

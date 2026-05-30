@@ -15,6 +15,19 @@ export async function getPronosticos (idUsuario, idQuiniela) {
 export async function upsertPronostico ({ idQuiniela, idUsuario, idPartido, golesAPred, golesBPred }) {
   if (golesAPred < 0 || golesBPred < 0) throw new Error('Los goles no pueden ser negativos')
 
+  // Verificar que el partido no ha iniciado
+  const { data: partido, error: partidoErr } = await supabase
+    .schema('quiniela')
+    .from('vw_partidos_detalle')
+    .select('fecha, estado')
+    .eq('id_partido', idPartido)
+    .maybeSingle()
+
+  if (partidoErr || !partido) throw new Error('Partido no encontrado')
+  if (partido.estado !== 'pendiente' || new Date(partido.fecha) <= new Date()) {
+    throw new Error('Los pronósticos de este partido ya están cerrados')
+  }
+
   const { data, error } = await supabase
     .schema('quiniela')
     .from('pronosticos')
