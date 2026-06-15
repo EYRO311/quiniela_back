@@ -30,6 +30,17 @@ export async function crearQuiniela ({ nombre, descripcion, tipo, idUsuario }) {
     .from('quiniela_usuarios')
     .insert({ id_quiniela: quiniela.id_quiniela, id_usuario: idUsuario })
 
+  await supabase
+    .schema('quiniela')
+    .from('reglas_puntaje')
+    .insert({
+      id_quiniela: quiniela.id_quiniela,
+      puntos_marcador_exacto: 3,
+      puntos_ganador_correcto: 1,
+      puntos_empate_correcto: 1,
+      puntos_diferencia_goles: 1
+    })
+
   return quiniela
 }
 
