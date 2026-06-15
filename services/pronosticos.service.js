@@ -24,10 +24,9 @@ export async function upsertPronostico ({ idQuiniela, idUsuario, idPartido, gole
     .maybeSingle()
 
   if (partidoErr || !partido) throw new Error('Partido no encontrado')
-  // TEMPORAL: candado de cierre desactivado a petición del usuario (volver a activar después)
-  // if (partido.estado !== 'pendiente' || new Date(partido.fecha) <= new Date()) {
-  //   throw new Error('Los pronósticos de este partido ya están cerrados')
-  // }
+  if (partido.estado !== 'pendiente' || new Date(partido.fecha) <= new Date()) {
+    throw new Error('Los pronósticos de este partido ya están cerrados')
+  }
 
   const { data, error } = await supabase
     .schema('quiniela')
