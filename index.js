@@ -28,7 +28,7 @@ const corsOptions = {
     'Expires',
     'x-amz-tagging'
   ],
-  credentials: true    
+  credentials: true
 }
 
 const PORT = process.env.PORT || 3000
