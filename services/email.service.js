@@ -45,6 +45,37 @@ export async function sendResultadoPartidoEmail (correo, { equipoA, equipoB, gol
   })
 }
 
+export async function sendRecordatorioPrediccionEmail (correo, { equipoA, equipoB, fecha }) {
+  const hora = new Date(fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    console.log(`[DEV] Recordatorio para ${correo}: ${equipoA} vs ${equipoB} empieza a las ${hora} y aún no tienes predicción`)
+    return
+  }
+
+  const transporter = createTransport()
+
+  await transporter.sendMail({
+    from: `Quiniela <${GMAIL_USER}>`,
+    to: correo,
+    subject: `⏰ ${equipoA} vs ${equipoB} empieza en 10 minutos`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+        <h2 style="color:#060E1E;margin-bottom:8px;">¡Aún no tienes predicción!</h2>
+        <p style="font-size:18px;font-weight:bold;color:#060E1E;margin-bottom:16px;">
+          ${equipoA} vs ${equipoB}
+        </p>
+        <p style="color:#4B5563;margin-bottom:24px;">
+          El partido comienza a las <strong>${hora}</strong> (en 10 minutos). Ingresa tu pronóstico antes de que inicie.
+        </p>
+        <p style="color:#9CA3AF;font-size:12px;">
+          Una vez que el partido comience, ya no podrás registrar tu predicción.
+        </p>
+      </div>
+    `
+  })
+}
+
 export async function sendResetPasswordEmail (correo, resetUrl) {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
     console.log(`[DEV] Enlace de recuperación para ${correo}:\n${resetUrl}`)

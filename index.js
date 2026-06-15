@@ -10,6 +10,7 @@ import pronosticosRoutes from './routes/pronosticos.routes.js'
 import equiposRoutes from './routes/equipos.routes.js'
 import f1Routes from './routes/f1.routes.js'
 import prediccionFinalRoutes from './routes/prediccionFinal.routes.js'
+import recordatoriosRoutes from './routes/recordatorios.routes.js'
 
 const corsOptions = {
   origin: [
@@ -47,5 +48,6 @@ app.use('/pronosticos', pronosticosRoutes)
 app.use('/equipos', equiposRoutes)
 app.use('/f1', f1Routes)
 app.use('/predicciones-finales', prediccionFinalRoutes)
+app.use('/recordatorios', recordatoriosRoutes)
 
 app.listen(PORT, () => console.log(`Servidor escuchando en puerto ${PORT}`))
