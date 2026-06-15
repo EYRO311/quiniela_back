@@ -13,6 +13,38 @@ function createTransport () {
   })
 }
 
+export async function sendResultadoPartidoEmail (correo, { equipoA, equipoB, golesA, golesB, golesAPred, golesBPred, puntosObtenidos }) {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    console.log(`[DEV] Resultado para ${correo}: ${equipoA} ${golesA}-${golesB} ${equipoB} | tu pronóstico ${golesAPred}-${golesBPred} | +${puntosObtenidos} pts`)
+    return
+  }
+
+  const transporter = createTransport()
+
+  await transporter.sendMail({
+    from: `Quiniela <${GMAIL_USER}>`,
+    to: correo,
+    subject: `Resultado: ${equipoA} ${golesA} - ${golesB} ${equipoB}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+        <h2 style="color:#060E1E;margin-bottom:8px;">¡Partido finalizado!</h2>
+        <p style="font-size:18px;font-weight:bold;color:#060E1E;margin-bottom:16px;">
+          ${equipoA} ${golesA} - ${golesB} ${equipoB}
+        </p>
+        <p style="color:#4B5563;margin-bottom:8px;">
+          Tu pronóstico: <strong>${golesAPred} - ${golesBPred}</strong>
+        </p>
+        <p style="color:#4B5563;margin-bottom:24px;">
+          Puntos obtenidos: <strong style="color:#16A34A;">+${puntosObtenidos}</strong>
+        </p>
+        <p style="color:#9CA3AF;font-size:12px;">
+          Revisa el ranking actualizado en la app de Quiniela Mundial 2026.
+        </p>
+      </div>
+    `
+  })
+}
+
 export async function sendResetPasswordEmail (correo, resetUrl) {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
     console.log(`[DEV] Enlace de recuperación para ${correo}:\n${resetUrl}`)

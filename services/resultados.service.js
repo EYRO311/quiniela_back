@@ -1,5 +1,6 @@
 import { supabase } from '../db/supabase.js'
 import { calcularPuntosPrediccionesFinales, getPuntosPrediccionesFinales } from './prediccionFinal.service.js'
+import { sendResultadoPartidoEmail } from './email.service.js'
 
 const DEFAULT_REGLAS = {
   puntos_marcador_exacto: 3,
@@ -67,6 +68,47 @@ export async function registrarResultado ({ idPartido, golesA, golesB, idUsuario
   return aplicarResultado({ idPartido, golesA, golesB })
 }
 
+async function enviarNotificacionesResultado ({ idPartido, golesA, golesB, notificaciones }) {
+  if (!notificaciones.length) return
+
+  const { data: partido } = await supabase
+    .schema('quiniela')
+    .from('vw_partidos_detalle')
+    .select('equipo_a, equipo_b')
+    .eq('id_partido', idPartido)
+    .maybeSingle()
+
+  if (!partido) return
+
+  const idsUsuarios = [...new Set(notificaciones.map(n => n.idUsuario))]
+  const { data: usuarios } = await supabase
+    .schema('quiniela')
+    .from('usuarios')
+    .select('id_random, correo')
+    .in('id_random', idsUsuarios)
+
+  const correoPorUsuario = new Map((usuarios || []).map(u => [u.id_random, u.correo]))
+
+  for (const n of notificaciones) {
+    const correo = correoPorUsuario.get(n.idUsuario)
+    if (!correo) continue
+
+    try {
+      await sendResultadoPartidoEmail(correo, {
+        equipoA: partido.equipo_a,
+        equipoB: partido.equipo_b,
+        golesA,
+        golesB,
+        golesAPred: n.golesAPred,
+        golesBPred: n.golesBPred,
+        puntosObtenidos: n.puntos
+      })
+    } catch (err) {
+      console.error(`Error enviando correo de resultado a ${correo}:`, err.message)
+    }
+  }
+}
+
 export async function aplicarResultado ({ idPartido, golesA, golesB }) {
   const { data: partidoActualizado, error: updateErr } = await supabase
     .schema('quiniela')
@@ -82,13 +124,14 @@ export async function aplicarResultado ({ idPartido, golesA, golesB }) {
   const { data: pronosticos, error: pronosticosErr } = await supabase
     .schema('quiniela')
     .from('pronosticos')
-    .select('id_pronostico, id_quiniela, goles_a_pred, goles_b_pred')
+    .select('id_pronostico, id_quiniela, id_usuario, goles_a_pred, goles_b_pred')
     .eq('id_partido', idPartido)
 
   if (pronosticosErr) throw new Error(pronosticosErr.message)
 
   const reglasPorQuiniela = new Map()
   const quinielasAfectadas = new Set()
+  const notificaciones = []
 
   for (const pronostico of pronosticos || []) {
     let reglas = reglasPorQuiniela.get(pronostico.id_quiniela)
@@ -106,7 +149,15 @@ export async function aplicarResultado ({ idPartido, golesA, golesB }) {
       .eq('id_pronostico', pronostico.id_pronostico)
 
     quinielasAfectadas.add(pronostico.id_quiniela)
+    notificaciones.push({
+      idUsuario: pronostico.id_usuario,
+      golesAPred: pronostico.goles_a_pred,
+      golesBPred: pronostico.goles_b_pred,
+      puntos
+    })
   }
+
+  await enviarNotificacionesResultado({ idPartido, golesA, golesB, notificaciones })
 
   if (partidoActualizado.fase === 'final') {
     const idEquipoCampeon = golesA > golesB ? partidoActualizado.id_equipo_a : partidoActualizado.id_equipo_b
