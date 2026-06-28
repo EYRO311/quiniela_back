@@ -22,16 +22,46 @@ export async function esSuperAdmin (idUsuario) {
   return tipo === 'Super_admin'
 }
 
-export function calcularPuntos (predA, predB, realA, realB, reglas) {
-  if (predA === realA && predB === realB) return reglas.puntos_marcador_exacto
+const PUNTOS_PENALES_MARCADOR_EXACTO = 2
+const PUNTOS_PENALES_GANADOR = 1
 
-  const signoPred = Math.sign(predA - predB)
-  const signoReal = Math.sign(realA - realB)
+export function calcularPuntos (predA, predB, realA, realB, reglas, opciones = {}) {
+  const { esEliminacion = false, penalAPred = null, penalBPred = null, penalAReal = null, penalBReal = null } = opciones
+
+  if (predA === realA && predB === realB) {
+    let puntos = reglas.puntos_marcador_exacto
+    // En eliminación, un marcador empatado se desempata por penales: además del
+    // marcador exacto, hay puntos extra por acertar el marcador o el ganador de penales.
+    if (esEliminacion && realA === realB) {
+      puntos += calcularPuntosPenales(penalAPred, penalBPred, penalAReal, penalBReal)
+    }
+    return puntos
+  }
+
+  // En eliminación, "quién gana" lo decide la tanda de penales cuando hay empate.
+  const signoPred = predA === predB
+    ? (esEliminacion ? signoPenal(penalAPred, penalBPred) : 0)
+    : Math.sign(predA - predB)
+  const signoReal = realA === realB
+    ? (esEliminacion ? signoPenal(penalAReal, penalBReal) : 0)
+    : Math.sign(realA - realB)
+
   if (signoPred !== signoReal) return 0
+  return signoReal === 0 ? reglas.puntos_empate_correcto : reglas.puntos_ganador_correcto
+}
 
-  let puntos = signoReal === 0 ? reglas.puntos_empate_correcto : reglas.puntos_ganador_correcto
-  if ((predA - predB) === (realA - realB)) puntos += reglas.puntos_diferencia_goles
-  return puntos
+function signoPenal (golesA, golesB) {
+  if (golesA === null || golesB === null || golesA === golesB) return 0
+  return golesA > golesB ? 1 : -1
+}
+
+function calcularPuntosPenales (predA, predB, realA, realB) {
+  if (predA === null || predB === null || realA === null || realB === null) return 0
+  if (predA === realA && predB === realB) return PUNTOS_PENALES_MARCADOR_EXACTO
+
+  const signoPred = signoPenal(predA, predB)
+  const signoReal = signoPenal(realA, realB)
+  return signoPred !== 0 && signoPred === signoReal ? PUNTOS_PENALES_GANADOR : 0
 }
 
 async function getReglas (idQuiniela) {
@@ -45,7 +75,7 @@ async function getReglas (idQuiniela) {
   return data || DEFAULT_REGLAS
 }
 
-export async function registrarResultado ({ idPartido, golesA, golesB, idUsuario }) {
+export async function registrarResultado ({ idPartido, golesA, golesB, idUsuario, penalA, penalB }) {
   if (!(await esSuperAdmin(idUsuario))) {
     throw new Error('No autorizado')
   }
@@ -55,7 +85,7 @@ export async function registrarResultado ({ idPartido, golesA, golesB, idUsuario
   const { data: partido, error: partidoErr } = await supabase
     .schema('quiniela')
     .from('partidos')
-    .select('id_partido, fecha')
+    .select('id_partido, fecha, fase')
     .eq('id_partido', idPartido)
     .maybeSingle()
 
@@ -65,7 +95,15 @@ export async function registrarResultado ({ idPartido, golesA, golesB, idUsuario
     throw new Error('No se puede registrar el resultado antes de la fecha del partido')
   }
 
-  return aplicarResultado({ idPartido, golesA, golesB })
+  if (partido.fase !== 'grupos' && golesA === golesB) {
+    if (penalA === undefined || penalB === undefined || penalA === null || penalB === null) {
+      throw new Error('Debes indicar el marcador de la tanda de penales')
+    }
+    if (penalA < 0 || penalB < 0) throw new Error('El marcador de penales no puede ser negativo')
+    if (penalA === penalB) throw new Error('La tanda de penales no puede terminar en empate')
+  }
+
+  return aplicarResultado({ idPartido, golesA, golesB, penalA, penalB })
 }
 
 async function enviarNotificacionesResultado ({ idPartido, golesA, golesB, notificaciones }) {
@@ -109,11 +147,19 @@ async function enviarNotificacionesResultado ({ idPartido, golesA, golesB, notif
   }
 }
 
-export async function aplicarResultado ({ idPartido, golesA, golesB }) {
+export async function aplicarResultado ({ idPartido, golesA, golesB, penalA, penalB }) {
+  const esEmpate = golesA === golesB
   const { data: partidoActualizado, error: updateErr } = await supabase
     .schema('quiniela')
     .from('partidos')
-    .update({ goles_a: golesA, goles_b: golesB, estado: 'finalizado', updated_at: new Date().toISOString() })
+    .update({
+      goles_a: golesA,
+      goles_b: golesB,
+      penal_a: esEmpate ? (penalA ?? null) : null,
+      penal_b: esEmpate ? (penalB ?? null) : null,
+      estado: 'finalizado',
+      updated_at: new Date().toISOString()
+    })
     .eq('id_partido', idPartido)
     .select()
     .maybeSingle()
@@ -121,10 +167,12 @@ export async function aplicarResultado ({ idPartido, golesA, golesB }) {
   if (updateErr) throw new Error(updateErr.message)
   if (!partidoActualizado) throw new Error('Partido no encontrado')
 
+  const esEliminacion = partidoActualizado.fase !== 'grupos'
+
   const { data: pronosticos, error: pronosticosErr } = await supabase
     .schema('quiniela')
     .from('pronosticos')
-    .select('id_pronostico, id_quiniela, id_usuario, goles_a_pred, goles_b_pred')
+    .select('id_pronostico, id_quiniela, id_usuario, goles_a_pred, goles_b_pred, penal_a_pred, penal_b_pred')
     .eq('id_partido', idPartido)
 
   if (pronosticosErr) throw new Error(pronosticosErr.message)
@@ -140,7 +188,13 @@ export async function aplicarResultado ({ idPartido, golesA, golesB }) {
       reglasPorQuiniela.set(pronostico.id_quiniela, reglas)
     }
 
-    const puntos = calcularPuntos(pronostico.goles_a_pred, pronostico.goles_b_pred, golesA, golesB, reglas)
+    const puntos = calcularPuntos(pronostico.goles_a_pred, pronostico.goles_b_pred, golesA, golesB, reglas, {
+      esEliminacion,
+      penalAPred: pronostico.penal_a_pred,
+      penalBPred: pronostico.penal_b_pred,
+      penalAReal: partidoActualizado.penal_a,
+      penalBReal: partidoActualizado.penal_b
+    })
 
     await supabase
       .schema('quiniela')
@@ -189,7 +243,7 @@ export async function recalcularRanking (idQuiniela) {
     const puntos = p.puntos_obtenidos || 0
     actual.puntos += puntos
     if (puntos > 0) {
-      if (puntos === reglas.puntos_marcador_exacto) actual.aciertos_exactos += 1
+      if (puntos >= reglas.puntos_marcador_exacto) actual.aciertos_exactos += 1
       else actual.aciertos_resultado += 1
     }
     totales.set(p.id_usuario, actual)

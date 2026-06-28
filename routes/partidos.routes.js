@@ -25,7 +25,7 @@ router.get('/proximo', async (req, res) => {
 
 router.put('/:id/resultado', async (req, res) => {
   try {
-    const { golesA, golesB, idUsuario } = req.body
+    const { golesA, golesB, idUsuario, penalA, penalB } = req.body
     if (golesA === undefined || golesB === undefined || !idUsuario) {
       return res.status(400).json({ error: 'golesA, golesB e idUsuario son requeridos' })
     }
@@ -33,7 +33,9 @@ router.put('/:id/resultado', async (req, res) => {
       idPartido: req.params.id,
       golesA: Number(golesA),
       golesB: Number(golesB),
-      idUsuario
+      idUsuario,
+      penalA: penalA === undefined || penalA === null ? null : Number(penalA),
+      penalB: penalB === undefined || penalB === null ? null : Number(penalB)
     })
     res.json({ partido })
   } catch (error) {

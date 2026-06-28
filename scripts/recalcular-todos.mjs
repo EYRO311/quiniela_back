@@ -1,0 +1,158 @@
+import { createClient } from '@supabase/supabase-js'
+import 'dotenv/config'
+
+const supabase = createClient(
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+const DEFAULT_REGLAS = {
+  puntos_marcador_exacto: 3,
+  puntos_ganador_correcto: 1,
+  puntos_empate_correcto: 1
+}
+
+function calcularPuntos (predA, predB, realA, realB, reglas) {
+  if (predA === realA && predB === realB) return reglas.puntos_marcador_exacto
+
+  const signoPred = Math.sign(predA - predB)
+  const signoReal = Math.sign(realA - realB)
+  if (signoPred !== signoReal) return 0
+
+  return signoReal === 0 ? reglas.puntos_empate_correcto : reglas.puntos_ganador_correcto
+}
+
+async function getReglas (idQuiniela) {
+  const { data } = await supabase
+    .schema('quiniela')
+    .from('reglas_puntaje')
+    .select('puntos_marcador_exacto, puntos_ganador_correcto, puntos_empate_correcto')
+    .eq('id_quiniela', idQuiniela)
+    .maybeSingle()
+  return data || DEFAULT_REGLAS
+}
+
+async function recalcularRanking (idQuiniela, reglas) {
+  const { data: pronosticos } = await supabase
+    .schema('quiniela')
+    .from('pronosticos')
+    .select('id_usuario, puntos_obtenidos')
+    .eq('id_quiniela', idQuiniela)
+
+  const totales = new Map()
+  for (const p of pronosticos || []) {
+    const actual = totales.get(p.id_usuario) || { puntos: 0, aciertos_exactos: 0, aciertos_resultado: 0 }
+    const puntos = p.puntos_obtenidos || 0
+    actual.puntos += puntos
+    if (puntos > 0) {
+      if (puntos === reglas.puntos_marcador_exacto) actual.aciertos_exactos += 1
+      else actual.aciertos_resultado += 1
+    }
+    totales.set(p.id_usuario, actual)
+  }
+
+  const { data: participantes } = await supabase
+    .schema('quiniela')
+    .from('quiniela_usuarios')
+    .select('id_quiniela_usuario, id_usuario')
+    .eq('id_quiniela', idQuiniela)
+
+  const vacio = { puntos: 0, aciertos_exactos: 0, aciertos_resultado: 0 }
+  const ordenados = (participantes || [])
+    .map(p => ({ ...p, ...(totales.get(p.id_usuario) || vacio) }))
+    .sort((a, b) => b.puntos - a.puntos)
+
+  const ahora = new Date().toISOString()
+
+  for (let i = 0; i < ordenados.length; i++) {
+    const item = ordenados[i]
+    const posicion = i + 1
+
+    await supabase
+      .schema('quiniela')
+      .from('quiniela_usuarios')
+      .update({ puntos: item.puntos, posicion })
+      .eq('id_quiniela_usuario', item.id_quiniela_usuario)
+
+    const { data: rankingExistente } = await supabase
+      .schema('quiniela')
+      .from('ranking')
+      .select('id_ranking')
+      .eq('id_quiniela', idQuiniela)
+      .eq('id_usuario', item.id_usuario)
+      .maybeSingle()
+
+    if (rankingExistente) {
+      await supabase
+        .schema('quiniela')
+        .from('ranking')
+        .update({ puntos: item.puntos, aciertos_exactos: item.aciertos_exactos, aciertos_resultado: item.aciertos_resultado, posicion, updated_at: ahora })
+        .eq('id_ranking', rankingExistente.id_ranking)
+    } else {
+      await supabase
+        .schema('quiniela')
+        .from('ranking')
+        .insert({ id_quiniela: idQuiniela, id_usuario: item.id_usuario, puntos: item.puntos, aciertos_exactos: item.aciertos_exactos, aciertos_resultado: item.aciertos_resultado, posicion, updated_at: ahora })
+    }
+  }
+}
+
+async function main () {
+  // Obtener todos los partidos finalizados con resultado
+  const { data: partidos, error } = await supabase
+    .schema('quiniela')
+    .from('partidos')
+    .select('id_partido, goles_a, goles_b')
+    .eq('estado', 'finalizado')
+    .not('goles_a', 'is', null)
+    .not('goles_b', 'is', null)
+
+  if (error) throw new Error(error.message)
+  console.log(`Partidos finalizados: ${partidos.length}`)
+
+  const quinielasAfectadas = new Set()
+  const reglasPorQuiniela = new Map()
+
+  for (const partido of partidos) {
+    const { data: pronosticos } = await supabase
+      .schema('quiniela')
+      .from('pronosticos')
+      .select('id_pronostico, id_quiniela, goles_a_pred, goles_b_pred')
+      .eq('id_partido', partido.id_partido)
+
+    for (const pron of pronosticos || []) {
+      let reglas = reglasPorQuiniela.get(pron.id_quiniela)
+      if (!reglas) {
+        reglas = await getReglas(pron.id_quiniela)
+        reglasPorQuiniela.set(pron.id_quiniela, reglas)
+      }
+
+      const puntos = calcularPuntos(pron.goles_a_pred, pron.goles_b_pred, partido.goles_a, partido.goles_b, reglas)
+
+      await supabase
+        .schema('quiniela')
+        .from('pronosticos')
+        .update({ puntos_obtenidos: puntos, updated_at: new Date().toISOString() })
+        .eq('id_pronostico', pron.id_pronostico)
+
+      quinielasAfectadas.add(pron.id_quiniela)
+    }
+
+    process.stdout.write('.')
+  }
+
+  console.log(`\nRecalculando ranking para ${quinielasAfectadas.size} quiniela(s)...`)
+
+  for (const idQuiniela of quinielasAfectadas) {
+    const reglas = reglasPorQuiniela.get(idQuiniela) || DEFAULT_REGLAS
+    await recalcularRanking(idQuiniela, reglas)
+    console.log(`  Quiniela ${idQuiniela} actualizada`)
+  }
+
+  console.log('\n✓ Recalculo completado.')
+}
+
+main().catch(err => {
+  console.error('ERROR:', err.message)
+  process.exit(1)
+})

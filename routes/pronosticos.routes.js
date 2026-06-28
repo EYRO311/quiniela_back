@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { getPronosticos, upsertPronostico } from '../services/pronosticos.service.js'
+import { getPronosticos, getPronosticosQuiniela, upsertPronostico } from '../services/pronosticos.service.js'
 
 const router = Router()
 
@@ -16,9 +16,18 @@ router.get('/', async (req, res) => {
   }
 })
 
+router.get('/quiniela/:idQuiniela', async (req, res) => {
+  try {
+    const pronosticos = await getPronosticosQuiniela(req.params.idQuiniela)
+    res.json({ pronosticos })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 router.post('/', async (req, res) => {
   try {
-    const { idQuiniela, idUsuario, idPartido, golesAPred, golesBPred } = req.body
+    const { idQuiniela, idUsuario, idPartido, golesAPred, golesBPred, penalAPred, penalBPred } = req.body
     if (!idQuiniela || !idUsuario || !idPartido || golesAPred === undefined || golesBPred === undefined) {
       return res.status(400).json({ error: 'Todos los campos son requeridos' })
     }
@@ -27,7 +36,9 @@ router.post('/', async (req, res) => {
       idUsuario,
       idPartido,
       golesAPred: Number(golesAPred),
-      golesBPred: Number(golesBPred)
+      golesBPred: Number(golesBPred),
+      penalAPred: penalAPred === undefined || penalAPred === null ? null : Number(penalAPred),
+      penalBPred: penalBPred === undefined || penalBPred === null ? null : Number(penalBPred)
     })
     res.status(201).json({ pronostico })
   } catch (error) {
