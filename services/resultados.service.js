@@ -30,22 +30,24 @@ export function calcularPuntos (predA, predB, realA, realB, reglas, opciones = {
 
   if (predA === realA && predB === realB) {
     let puntos = reglas.puntos_marcador_exacto
-    // En eliminación, un marcador empatado se desempata por penales: además del
-    // marcador exacto, hay puntos extra por acertar el marcador o el ganador de penales.
     if (esEliminacion && realA === realB) {
       puntos += calcularPuntosPenales(penalAPred, penalBPred, penalAReal, penalBReal)
     }
     return puntos
   }
 
-  // En eliminación, "quién gana" lo decide la tanda de penales cuando hay empate.
-  const signoPred = predA === predB
-    ? (esEliminacion ? signoPenal(penalAPred, penalBPred) : 0)
-    : Math.sign(predA - predB)
-  const signoReal = realA === realB
-    ? (esEliminacion ? signoPenal(penalAReal, penalBReal) : 0)
-    : Math.sign(realA - realB)
+  // En eliminación con empate en regulación: solo quien predijo empate puntúa.
+  // Predecir un marcador no-empate y que el partido se vaya a penales = resultado mal.
+  if (esEliminacion && realA === realB) {
+    if (predA !== predB) return 0
+    return reglas.puntos_empate_correcto + calcularPuntosPenales(penalAPred, penalBPred, penalAReal, penalBReal)
+  }
 
+  // En eliminación con resultado no-empate: predecir empate no da puntos.
+  if (esEliminacion && predA === predB) return 0
+
+  const signoPred = Math.sign(predA - predB)
+  const signoReal = Math.sign(realA - realB)
   if (signoPred !== signoReal) return 0
   return signoReal === 0 ? reglas.puntos_empate_correcto : reglas.puntos_ganador_correcto
 }

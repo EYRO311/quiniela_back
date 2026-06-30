@@ -9,7 +9,18 @@ export async function getPartidos () {
     .order('fecha', { ascending: true })
 
   if (error) throw new Error(error.message)
-  return data || []
+  if (!data?.length) return []
+
+  // La vista no incluye penal_a/penal_b (agregados después de crearla).
+  // Los traemos directo de la tabla partidos y los fusionamos.
+  const { data: penales } = await supabase
+    .schema('quiniela')
+    .from('partidos')
+    .select('id_partido, penal_a, penal_b')
+    .in('id_partido', data.map(p => p.id_partido))
+
+  const penalesMap = new Map((penales || []).map(p => [p.id_partido, p]))
+  return data.map(p => ({ ...p, penal_a: penalesMap.get(p.id_partido)?.penal_a ?? null, penal_b: penalesMap.get(p.id_partido)?.penal_b ?? null }))
 }
 
 export async function getProximoPartido () {
