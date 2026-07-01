@@ -56,7 +56,7 @@ export class UserRepository {
       .select('id_random')
       .single()
 
-    if (error) throw new Error(error.message)
+    if (error) throw new Error(humanizeDbError(error))
     return data.id_random
   }
 
@@ -106,7 +106,7 @@ export class UserRepository {
       .update({ password_hash: hashedPassword })
       .eq('auth_user_id', entry.authUserId)
 
-    if (error) throw new Error(error.message)
+    if (error) throw new Error(humanizeDbError(error))
     resetTokens.delete(token)
   }
 
@@ -125,7 +125,7 @@ export class UserRepository {
       .update({ password_hash: hashedPassword })
       .eq('auth_user_id', user.id)
 
-    if (updateError) throw new Error(updateError.message)
+    if (updateError) throw new Error(humanizeDbError(updateError))
   }
 
   static async login ({ identifier, password }) {
@@ -213,7 +213,7 @@ export class UserRepository {
       .select('id_random, username, nombre, correo, puntos_totales, telefono, tipo_user, created_at, futbol_f1')
       .single()
 
-    if (error) throw new Error(error.message)
+    if (error) throw new Error(humanizeDbError(error))
     return data
   }
 }
@@ -227,4 +227,18 @@ function validateCredentials (username, password) {
   ) {
     throw new Error('Usuario (mín. 3 caracteres) y contraseña (mín. 6 caracteres) requeridos')
   }
+}
+
+function humanizeDbError (error) {
+  const msg = error?.message ?? ''
+  const code = error?.code ?? ''
+
+  if (code === '23505' || msg.includes('unique constraint') || msg.includes('duplicate key')) {
+    if (msg.includes('username')) return 'Ese nombre de usuario ya está en uso'
+    if (msg.includes('correo') || msg.includes('email')) return 'Ese correo ya está en uso'
+    return 'Ese valor ya está registrado por otro usuario'
+  }
+  if (code === '23503' || msg.includes('foreign key')) return 'Referencia inválida'
+  if (code === '23502' || msg.includes('not-null')) return 'Falta un campo obligatorio'
+  return 'Ocurrió un error al guardar. Intenta de nuevo'
 }
