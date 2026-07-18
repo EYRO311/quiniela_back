@@ -1,7 +1,16 @@
 import { Router } from 'express'
-import { getPrediccionFinal, upsertPrediccionFinal, FECHA_LIMITE_PREDICCION_FINAL } from '../services/prediccionFinal.service.js'
+import { getPrediccionFinal, upsertPrediccionFinal, getPrediccionesFinalesQuiniela, FECHA_LIMITE_PREDICCION_FINAL } from '../services/prediccionFinal.service.js'
 
 const router = Router()
+
+router.get('/quiniela/:idQuiniela', async (req, res) => {
+  try {
+    const predicciones = await getPrediccionesFinalesQuiniela(req.params.idQuiniela)
+    res.json({ predicciones })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
 
 router.get('/', async (req, res) => {
   try {

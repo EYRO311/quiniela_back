@@ -100,6 +100,45 @@ export async function calcularPuntosPrediccionesFinales (idEquipoCampeon) {
   return quinielasAfectadas
 }
 
+export async function getPrediccionesFinalesQuiniela (idQuiniela) {
+  const { data, error } = await supabase
+    .schema('quiniela')
+    .from('pronosticos_especiales')
+    .select(`
+      id_usuario,
+      tipo,
+      puntos_obtenidos,
+      usuarios ( username ),
+      equipos ( id_equipo, nombre_pais, escudo_url )
+    `)
+    .eq('id_quiniela', idQuiniela)
+    .in('tipo', [TIPO_CAMPEON, TIPO_SUBCAMPEON])
+
+  if (error) throw new Error(error.message)
+
+  const porUsuario = new Map()
+  for (const fila of data || []) {
+    if (!porUsuario.has(fila.id_usuario)) {
+      porUsuario.set(fila.id_usuario, {
+        id_usuario: fila.id_usuario,
+        username: fila.usuarios?.username ?? '',
+        campeon: null,
+        subcampeon: null,
+        puntos_obtenidos: 0
+      })
+    }
+    const entrada = porUsuario.get(fila.id_usuario)
+    if (fila.tipo === TIPO_CAMPEON) {
+      entrada.campeon = fila.equipos
+      entrada.puntos_obtenidos = fila.puntos_obtenidos || 0
+    } else if (fila.tipo === TIPO_SUBCAMPEON) {
+      entrada.subcampeon = fila.equipos
+    }
+  }
+
+  return Array.from(porUsuario.values())
+}
+
 export async function getPuntosPrediccionesFinales (idQuiniela) {
   const { data, error } = await supabase
     .schema('quiniela')
