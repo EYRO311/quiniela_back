@@ -105,25 +105,27 @@ export async function calcularPuntosPrediccionesFinales (idEquipoCampeon, idEqui
     if (subcampeonExacto) puntos += PUNTOS_SUBCAMPEON
     else if (subcampeonRow.id_equipo === idEquipoCampeon) puntos += PUNTOS_FINALISTA
 
-    await supabase
+    // Nota: la columna "estado" tiene un check constraint en la BD que solo
+    // permite 'pendiente'; no se puede marcar 'acertado'/'fallido' ahí.
+    const { error: errCampeon } = await supabase
       .schema('quiniela')
       .from('pronosticos_especiales')
       .update({
         puntos_obtenidos: puntos,
-        estado: campeonExacto ? 'acertado' : 'fallido',
         updated_at: new Date().toISOString()
       })
       .eq('id_pronostico_especial', campeonRow.id_pronostico_especial)
+    if (errCampeon) throw new Error(errCampeon.message)
 
-    await supabase
+    const { error: errSubcampeon } = await supabase
       .schema('quiniela')
       .from('pronosticos_especiales')
       .update({
         puntos_obtenidos: 0,
-        estado: subcampeonExacto ? 'acertado' : 'fallido',
         updated_at: new Date().toISOString()
       })
       .eq('id_pronostico_especial', subcampeonRow.id_pronostico_especial)
+    if (errSubcampeon) throw new Error(errSubcampeon.message)
 
     quinielasAfectadas.add(id_quiniela)
   }
