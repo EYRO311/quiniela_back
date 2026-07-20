@@ -216,8 +216,12 @@ export async function aplicarResultado ({ idPartido, golesA, golesB, penalA, pen
   await enviarNotificacionesResultado({ idPartido, golesA, golesB, notificaciones })
 
   if (partidoActualizado.fase === 'final') {
-    const idEquipoCampeon = golesA > golesB ? partidoActualizado.id_equipo_a : partidoActualizado.id_equipo_b
-    const quinielasConPrediccion = await calcularPuntosPrediccionesFinales(idEquipoCampeon)
+    const ganoEquipoA = esEmpate
+      ? partidoActualizado.penal_a > partidoActualizado.penal_b
+      : golesA > golesB
+    const idEquipoCampeon = ganoEquipoA ? partidoActualizado.id_equipo_a : partidoActualizado.id_equipo_b
+    const idEquipoSubcampeon = ganoEquipoA ? partidoActualizado.id_equipo_b : partidoActualizado.id_equipo_a
+    const quinielasConPrediccion = await calcularPuntosPrediccionesFinales(idEquipoCampeon, idEquipoSubcampeon)
     for (const idQuiniela of quinielasConPrediccion) quinielasAfectadas.add(idQuiniela)
   }
 

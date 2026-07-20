@@ -1,6 +1,9 @@
 import { supabase } from '../db/supabase.js'
 
 const PUNTOS_CAMPEON = 5
+const PUNTOS_SUBCAMPEON = 3
+// Equipo elegido (en cualquier posición) que sí llegó a la final, pero en la posición contraria a la elegida
+const PUNTOS_FINALISTA = 3
 export const FECHA_LIMITE_PREDICCION_FINAL = new Date('2026-06-28T23:59:59Z')
 
 const TIPO_CAMPEON = 'campeon'
@@ -71,30 +74,58 @@ export async function upsertPrediccionFinal ({ idQuiniela, idUsuario, idCampeon,
   return { id_equipo_campeon: idCampeon, id_equipo_subcampeon: idSubcampeon }
 }
 
-export async function calcularPuntosPrediccionesFinales (idEquipoCampeon) {
+export async function calcularPuntosPrediccionesFinales (idEquipoCampeon, idEquipoSubcampeon) {
   const { data: predicciones, error } = await supabase
     .schema('quiniela')
     .from('pronosticos_especiales')
-    .select('id_pronostico_especial, id_quiniela, id_equipo')
-    .eq('tipo', TIPO_CAMPEON)
+    .select('id_pronostico_especial, id_quiniela, id_usuario, tipo, id_equipo')
+    .in('tipo', [TIPO_CAMPEON, TIPO_SUBCAMPEON])
 
   if (error) throw new Error(error.message)
 
+  const porUsuario = new Map()
+  for (const p of predicciones || []) {
+    const key = `${p.id_quiniela}:${p.id_usuario}`
+    if (!porUsuario.has(key)) porUsuario.set(key, { id_quiniela: p.id_quiniela })
+    porUsuario.get(key)[p.tipo] = p
+  }
+
   const quinielasAfectadas = new Set()
 
-  for (const prediccion of predicciones || []) {
-    const acerto = prediccion.id_equipo === idEquipoCampeon
+  for (const { id_quiniela, [TIPO_CAMPEON]: campeonRow, [TIPO_SUBCAMPEON]: subcampeonRow } of porUsuario.values()) {
+    if (!campeonRow || !subcampeonRow) continue
+
+    const campeonExacto = campeonRow.id_equipo === idEquipoCampeon
+    const subcampeonExacto = subcampeonRow.id_equipo === idEquipoSubcampeon
+
+    let puntos = 0
+    if (campeonExacto) puntos += PUNTOS_CAMPEON
+    else if (campeonRow.id_equipo === idEquipoSubcampeon) puntos += PUNTOS_FINALISTA
+
+    if (subcampeonExacto) puntos += PUNTOS_SUBCAMPEON
+    else if (subcampeonRow.id_equipo === idEquipoCampeon) puntos += PUNTOS_FINALISTA
+
     await supabase
       .schema('quiniela')
       .from('pronosticos_especiales')
       .update({
-        puntos_obtenidos: acerto ? PUNTOS_CAMPEON : 0,
-        estado: acerto ? 'acertado' : 'fallido',
+        puntos_obtenidos: puntos,
+        estado: campeonExacto ? 'acertado' : 'fallido',
         updated_at: new Date().toISOString()
       })
-      .eq('id_pronostico_especial', prediccion.id_pronostico_especial)
+      .eq('id_pronostico_especial', campeonRow.id_pronostico_especial)
 
-    quinielasAfectadas.add(prediccion.id_quiniela)
+    await supabase
+      .schema('quiniela')
+      .from('pronosticos_especiales')
+      .update({
+        puntos_obtenidos: 0,
+        estado: subcampeonExacto ? 'acertado' : 'fallido',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id_pronostico_especial', subcampeonRow.id_pronostico_especial)
+
+    quinielasAfectadas.add(id_quiniela)
   }
 
   return quinielasAfectadas
